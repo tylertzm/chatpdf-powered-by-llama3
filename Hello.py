@@ -21,46 +21,54 @@ DATA_DIR = "user_data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# Sign-Up Functionality
-new_username = st.sidebar.text_input("New Username")
-new_password = st.sidebar.text_input("New Password", type="password")
-confirm_password = st.sidebar.text_input("Confirm Password", type="password")
-sign_up_button = st.sidebar.button("Sign Up")
+# Define sign-up and sign-in states
+is_authenticated = st.session_state.get("is_authenticated", False)
+username = st.session_state.get("username", "")
 
-if sign_up_button:
-    # Perform validation and create new account
-    if new_password == confirm_password:
-        # Store the new user's credentials
-        with open(os.path.join(DATA_DIR, f"{new_username}.txt"), "w") as file:
-            file.write(new_password)
-        # Create a chat history file for the new user
-        open(os.path.join(DATA_DIR, f"{new_username}_chat_history.txt"), "a").close()
-        st.sidebar.success("Account created successfully! Please sign in.")
-    else:
-        st.sidebar.error("Passwords do not match.")
+# Sign-Up Functionality
+if not is_authenticated:
+    new_username = st.sidebar.text_input("New Username")
+    new_password = st.sidebar.text_input("New Password", type="password")
+    confirm_password = st.sidebar.text_input("Confirm Password", type="password")
+    sign_up_button = st.sidebar.button("Sign Up")
+
+    if sign_up_button:
+        # Perform validation and create new account
+        if new_password == confirm_password:
+            # Store the new user's credentials
+            with open(os.path.join(DATA_DIR, f"{new_username}.txt"), "w") as file:
+                file.write(new_password)
+            # Create a chat history file for the new user
+            open(os.path.join(DATA_DIR, f"{new_username}_chat_history.txt"), "a").close()
+            st.experimental_rerun()  # Reload page after sign-up
+            st.sidebar.success("Account created successfully! Please sign in.")
+        else:
+            st.sidebar.error("Passwords do not match.")
 
 # Sign-In Functionality
-username = st.sidebar.text_input("Username")
-password = st.sidebar.text_input("Password", type="password")
-sign_in_button = st.sidebar.button("Sign In")
+if not is_authenticated:
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type="password")
+    sign_in_button = st.sidebar.button("Sign In")
 
-if sign_in_button:
-    # Check if the username exists
-    if os.path.exists(os.path.join(DATA_DIR, f"{username}.txt")):
-        # Check if the password matches
-        with open(os.path.join(DATA_DIR, f"{username}.txt"), "r") as file:
-            stored_password = file.read().strip()
-        if password == stored_password:
-            st.session_state.is_authenticated = True
-            st.session_state.username = username
-            st.sidebar.success("Successfully signed in!")
+    if sign_in_button:
+        # Check if the username exists
+        if os.path.exists(os.path.join(DATA_DIR, f"{username}.txt")):
+            # Check if the password matches
+            with open(os.path.join(DATA_DIR, f"{username}.txt"), "r") as file:
+                stored_password = file.read().strip()
+            if password == stored_password:
+                st.session_state.is_authenticated = True
+                st.session_state.username = username
+                st.experimental_rerun()  # Reload page after sign-in
+                st.sidebar.success("Successfully signed in!")
+            else:
+                st.sidebar.error("Invalid username or password")
         else:
             st.sidebar.error("Invalid username or password")
-    else:
-        st.sidebar.error("Invalid username or password")
 
 # Only show the main app content if the user is authenticated
-if st.session_state.get("is_authenticated"):
+if is_authenticated:
     # Upload PDF
     uploaded_pdf = st.sidebar.file_uploader("Choose a PDF file", type="pdf")
 
@@ -73,7 +81,7 @@ if st.session_state.get("is_authenticated"):
         pdf_text = ""
 
     # Load chat history for the current user
-    chat_history_file = os.path.join(DATA_DIR, f"{st.session_state.username}_chat_history.txt")
+    chat_history_file = os.path.join(DATA_DIR, f"{username}_chat_history.txt")
     chat_history = []
     if os.path.exists(chat_history_file):
         with open(chat_history_file, "r") as file:
@@ -120,3 +128,11 @@ if st.session_state.get("is_authenticated"):
     with st.container():
         for message in chat_history:
             st.write(message)
+else:
+    # Display sign-in or sign-up message
+    st.write("# Sign in or Sign up")
+    st.write("🡲", st.sidebar)
+
+    # Reset username field if user is not signed in
+    if not is_authenticated:
+        st.session_state.username = ""
