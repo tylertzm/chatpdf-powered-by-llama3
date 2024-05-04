@@ -1,51 +1,122 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+import os
 import streamlit as st
-from streamlit.logger import get_logger
+from pypdf import PdfReader
+import ollama
 
-LOGGER = get_logger(__name__)
+# Function to extract text from a PDF
+def extract_text_from_pdf(pdf_path):
+    reader = PdfReader(pdf_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text()
+    return text
 
+# Set up the UI with a custom theme
+st.set_page_config(layout="wide", page_title="ChatGPT PDF Q&A")
+st.sidebar.title("ChatPDF")
+st.sidebar.write("Upload a PDF file and ask questions about its content.")
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
-    )
+# Create a directory to store user data if it doesn't exist
+DATA_DIR = "user_data"
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
 
-    st.write("# Welcome to Streamlit! 👋")
+# Sign-Up Functionality
+new_username = st.sidebar.text_input("New Username")
+new_password = st.sidebar.text_input("New Password", type="password")
+confirm_password = st.sidebar.text_input("Confirm Password", type="password")
+sign_up_button = st.sidebar.button("Sign Up")
 
-    st.sidebar.success("Select a demo above.")
+if sign_up_button:
+    # Perform validation and create new account
+    if new_password == confirm_password:
+        # Store the new user's credentials
+        with open(os.path.join(DATA_DIR, f"{new_username}.txt"), "w") as file:
+            file.write(new_password)
+        # Create a chat history file for the new user
+        open(os.path.join(DATA_DIR, f"{new_username}_chat_history.txt"), "a").close()
+        st.sidebar.success("Account created successfully! Please sign in.")
+    else:
+        st.sidebar.error("Passwords do not match.")
 
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+# Sign-In Functionality
+username = st.sidebar.text_input("Username")
+password = st.sidebar.text_input("Password", type="password")
+sign_in_button = st.sidebar.button("Sign In")
 
+if sign_in_button:
+    # Check if the username exists
+    if os.path.exists(os.path.join(DATA_DIR, f"{username}.txt")):
+        # Check if the password matches
+        with open(os.path.join(DATA_DIR, f"{username}.txt"), "r") as file:
+            stored_password = file.read().strip()
+        if password == stored_password:
+            st.session_state.is_authenticated = True
+            st.session_state.username = username
+            st.sidebar.success("Successfully signed in!")
+        else:
+            st.sidebar.error("Invalid username or password")
+    else:
+        st.sidebar.error("Invalid username or password")
 
-if __name__ == "__main__":
-    run()
+# Only show the main app content if the user is authenticated
+if st.session_state.get("is_authenticated"):
+    # Upload PDF
+    uploaded_pdf = st.sidebar.file_uploader("Choose a PDF file", type="pdf")
+
+    # Display uploaded PDF name
+    if uploaded_pdf:
+        st.sidebar.write(f"**Uploaded PDF:** {uploaded_pdf.name}")
+        pdf_text = extract_text_from_pdf(uploaded_pdf)
+    else:
+        st.sidebar.write("**No PDF uploaded.**")
+        pdf_text = ""
+
+    # Load chat history for the current user
+    chat_history_file = os.path.join(DATA_DIR, f"{st.session_state.username}_chat_history.txt")
+    chat_history = []
+    if os.path.exists(chat_history_file):
+        with open(chat_history_file, "r") as file:
+            chat_history = file.readlines()
+
+    # Function to update the chat history
+    def update_chat_history(user_question, response):
+        chat_history.append(f"User: {user_question.strip()}\nBot: {response['message']['content'].strip()}\n")
+
+        # Save chat history to file
+        with open(chat_history_file, "w") as file:
+            file.writelines(chat_history)
+
+    # Use a form to input the question and handle submission
+    with st.form(key="question_form"):
+        user_question = st.text_input("Enter your question:")
+        submit_button = st.form_submit_button(label="Submit Question")
+
+        if submit_button:
+            if not pdf_text:
+                st.write("Please upload a PDF file first.")
+            elif not user_question:
+                st.write("Please enter a question.")
+            else:
+                # Create prompt
+                prompt = (
+                    f"Based on the following content from the PDF:\n\n{pdf_text}\n\n"
+                    f"Answer the following question:\n{user_question}"
+                )
+
+                # Display a loading spinner
+                with st.spinner('This may take up to 1 minute...'):
+                    # Use the prompt in the Ollama API
+                    response = ollama.chat(model="llama3", messages=[
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        }
+                    ])
+                    # Update the chat history
+                    update_chat_history(user_question, response)
+
+    # Display chat history above the input
+    with st.container():
+        for message in chat_history:
+            st.write(message)
