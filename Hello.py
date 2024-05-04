@@ -130,8 +130,8 @@ if is_authenticated:
             st.write(message)
 else:
     # Display sign-in or sign-up message
-    st.write("# Sign in or Sign up")
-    st.write("🡲", st.sidebar)
+    st.markdown("# Sign in or Sign up", unsafe_allow_html=True)
+    st.markdown("🡲 Sign in or sign up in the sidebar.", unsafe_allow_html=True)
 
     # Reset username field if user is not signed in
     if not is_authenticated:
